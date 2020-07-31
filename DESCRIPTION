@@ -34,7 +34,8 @@ Imports: data.table,
   pbapply,
   GenomeInfoDbData,
   BLMA,
-  GenomeInfoDb
+  GenomeInfoDb,
+  matrixStats
 biocViews: Software,
   HiC, Sequencing, Normalization
 License: MIT + file LICENSE
