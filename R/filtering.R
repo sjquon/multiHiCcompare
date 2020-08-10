@@ -1,3 +1,4 @@
+#' From Monash
 #' Perform filtering on a Hi-C experiment
 #' 
 #' @param hicexp A hicexp object.
@@ -46,40 +47,45 @@ hic_filter <- function(hicexp, zero.p = 0.8, A.min = 5, remove.regions = hg19_cy
   if (A.min < 0) {
     stop("A.min must be >= 0")
   }
-  # make matrix of IFs
-  IF_mat <- as.matrix(hic_table(hicexp)[, -c("chr", "region1", "region2", "D"), with = FALSE])
-  # get row Avg expression
-  A <- apply(IF_mat, 1, mean)
-  # filter by Avg expression of interacting pair
-  keep.A <- A > A.min
-  # filter by proportion of zero IFs for each interaction pair
-  zeros <- rowSums(IF_mat == 0) / ncol(IF_mat) # proportion of zeros by row
-  keep.z <- zeros <= zero.p
-  # final keep vector
-  keep <- keep.A & keep.z
-  # filter table
-  slot(hicexp, "hic_table") <- hic_table(hicexp)[keep,]
-  
-  ## TODO: make this generalizable to any genome
-  if(!is.null(remove.regions)) {
-    # filter out hg19 acen, gvar, stalk regions
-    tab <- hic_table(hicexp)
-    # make GRanges object for regions of hic_table
-    region1 <- tab[, c('chr', 'region1')]
-    region1[, `:=`(end = region1 + resolution(hicexp) - 1)]
-    region2 <- tab[, c('chr', 'region2')]
-    region2[, `:=`(end = region2 + resolution(hicexp) - 1)]
-    region1 <- GenomicRanges::makeGRangesFromDataFrame(region1, seqnames.field = 'chr', start.field = 'region1', end.field = 'end')
-    region2 <- GenomicRanges::makeGRangesFromDataFrame(region2, seqnames.field = 'chr', start.field = 'region2', end.field = 'end')
-    # overlap
-    olaps1 <- GenomicRanges::findOverlaps(region1, remove.regions)
-    olaps2 <- GenomicRanges::findOverlaps(region2, remove.regions)
-    remove <- unique(c(olaps1@from, olaps2@from))
-    # filter table
-    if (length(remove) > 0) {
-      slot(hicexp, "hic_table") <- hic_table(hicexp)[-remove,]
-    }
-  }
-  
+
+  hic_tbl <- hic_table(hicexp)
+  nn <- colnames(hic_tbl)[5:ncol(hic_tbl)]
+
+  hic_tbl[, `:=` (A = rowMeans2(as.matrix(.SD)),
+		  zeros_fraq = rowSums2(as.matrix(.SD) == 0)/length(nn)), .SDcols= nn]
+
+  hic_tbl_filt <- hic_tbl[, hic_tbl[zeros_fraq <= zero.p & A > A.min]]
+  hic_tbl_filt[, c("A", "zeros_fraq"):=NULL]
+  slot(hicexp, "hic_table") <- hic_tbl_filt
+
   return(hicexp)
+}
+
+hic_filter_regions <- function(hicexp, remove.regions = hg19_cyto) {
+
+  ## TODO: make this generalizable to any genome
+  if(is.null(remove.regions)) {
+    warning("No regions file was given")
+    return(hicexp)
+  }
+  # filter out hg19 acen, gvar, stalk regions
+  tab <- hic_table(hicexp)
+  # make GRanges object for regions of hic_table
+  region1 <- tab[, c('chr', 'region1')]
+  region1[, `:=`(end = region1 + resolution(hicexp) - 1)]
+  region2 <- tab[, c('chr', 'region2')]
+  region2[, `:=`(end = region2 + resolution(hicexp) - 1)]
+  region1 <- GenomicRanges::makeGRangesFromDataFrame(region1, seqnames.field = 'chr', start.field = 'region1', end.field = 'end')
+  region2 <- GenomicRanges::makeGRangesFromDataFrame(region2, seqnames.field = 'chr', start.field = 'region2', end.field = 'end')
+  # overlap
+  olaps1 <- GenomicRanges::findOverlaps(region1, remove.regions)
+  olaps2 <- GenomicRanges::findOverlaps(region2, remove.regions)
+  remove <- unique(c(olaps1@from, olaps2@from))
+  # filter table
+  if (length(remove) > 0) {
+    slot(hicexp, "hic_table") <- hic_table(hicexp)[-remove,]
+  }
+
+  return(hicexp)
+
 }
